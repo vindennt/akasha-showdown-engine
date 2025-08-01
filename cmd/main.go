@@ -9,8 +9,6 @@ import (
 	"os"
 	"os/signal"
 	"time"
-
-	// "github.com/vindennt/akasha-showdown-engine/cmd/server"
 )
 
 func main() {
@@ -37,14 +35,11 @@ func run() error {
 	log.Printf("Now listening on ws://%v", l.Addr())
 
 	// Create HTTP server using gameServer websocket handler
-	cs := newChatServer()
+	gs := newGameServer()
 	s := &http.Server{
-		Handler: cs,
-		// Handler: gameServer{
-		// 	logf: log.Printf,
-		// },
-		ReadTimeout: time.Second * 10,
-		WriteTimeout: time.Second * 10,
+		Handler: 		gs,
+		ReadTimeout: 	time.Second * 10,
+		WriteTimeout: 	time.Second * 10,
 	}
 
 	// Create error channel
