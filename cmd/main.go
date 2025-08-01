@@ -9,10 +9,12 @@ import (
 	"os"
 	"os/signal"
 	"time"
+
+	// "github.com/vindennt/akasha-showdown-engine/cmd/server"
 )
 
 func main() {
-	log.Printf("Starting server...")
+	log.Printf("Starting akasha-showdown-engine server...")
 
 	err := run()
 	if err != nil {
@@ -24,7 +26,7 @@ func main() {
 // Returns any errors
 func run() error {
 	if len(os.Args) < 2 {
-		return errors.New("Provide an address to listen on as the first argument")
+		return errors.New("Error: Provide an address to listen on as the first argument")
 	}
 
 	// Create TCP address listener l
@@ -35,10 +37,12 @@ func run() error {
 	log.Printf("Now listening on ws://%v", l.Addr())
 
 	// Create HTTP server using gameServer websocket handler
+	cs := newChatServer()
 	s := &http.Server{
-		Handler: gameServer{
-			logf: log.Printf,
-		},
+		Handler: cs,
+		// Handler: gameServer{
+		// 	logf: log.Printf,
+		// },
 		ReadTimeout: time.Second * 10,
 		WriteTimeout: time.Second * 10,
 	}
@@ -60,9 +64,9 @@ func run() error {
 	// Wait and listen on the err and sig channels; Logs any received errors/signals
 	select {
 	case err := <-errc:
-		log.Printf("Server error; Failed to serve: %v", err)
+		log.Printf("Server error. Failed to serve: %v", err)
 	case sig := <-sigs:
-		log.Printf("Received signal %v; Shutting down server...", sig)
+		log.Printf("Received signal %v. Shutting down server...", sig)
 	}
 
 	// Provide context for cleanup time, forcing close after 10 seconds

@@ -1,4 +1,4 @@
 .PHONY: run
 
 run:
-	go run ./cmd/akasha-showdown-engine localhost:8282
+	go run ./cmd/main.go localhost:8282
