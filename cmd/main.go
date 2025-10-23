@@ -37,9 +37,9 @@ func run() error {
 	// Create HTTP server using gameServer websocket handler
 	gs := newGameServer()
 	s := &http.Server{
-		Handler: 		gs,
-		ReadTimeout: 	time.Second * 10,
-		WriteTimeout: 	time.Second * 10,
+		Handler: gs,
+		ReadTimeout: time.Second * 10,
+		WriteTimeout: time.Second * 10,
 	}
 
 	// Create error channel
