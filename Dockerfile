@@ -15,8 +15,6 @@ WORKDIR /app
 
 COPY --from=builder /app/engine .
 
-COPY --from=builder /app/cmd/static_chat ./cmd/static_chat
-
 EXPOSE 8282
 
 CMD ["./engine", ":8282"]

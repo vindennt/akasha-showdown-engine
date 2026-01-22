@@ -16,25 +16,16 @@ import (
 	"github.com/coder/websocket"
 )
 
-// TODO: make this a more proper enum or type 
-colors := []string{"red", "green", "blue", "orange", "purple"}
+var (
+	nextSubscriberID   int
+	nextSubscriberIDMu sync.Mutex
+)
 
 type Peer struct {
 	Type  string
 	ID    int
 	State string
-	Color string
 }
-
-// NEW SUBSCRIBER REPRESENTATION
-// TODO: ensure this gives a new id to each subscriber
-// subscriber represents a subscrber
-// Messages sent on message channel messc
-// closeSlow called if client cannot keep up with the message rate
-var (
-	nextSubscriberID   int
-	nextSubscriberIDMu sync.Mutex
-)
 
 // subscriber represents a subscriber
 // Each subscriber gets a unique numeric id (starting at 0), a message channel
@@ -104,7 +95,6 @@ func newGameServer() *gameServer {
 	}
 
 	// Serves HTTP static file from the current directory
-	gs.serveMux.Handle("/", http.FileServer(http.Dir("cmd/static_chat")))
 	gs.serveMux.HandleFunc("/subscribe", gs.subscribeHandler)
 	gs.serveMux.HandleFunc("/publish", gs.publishHandler)
 
@@ -257,7 +247,7 @@ func (gs *gameServer) subscribe(w http.ResponseWriter, r *http.Request) error {
 	defer gs.removeSubscriber(sub) // Ensure subscriber is removed when function ends
 
 	// Websocket options
-	// TODO: Do not allow insecure skip verify
+	// TODO: Do not allow insecure skip verify, 
 	opts := websocket.AcceptOptions{
 		// OriginPatterns: []string{"localhost:5173"},
 		InsecureSkipVerify: true,
@@ -300,34 +290,31 @@ func (gs *gameServer) subscribe(w http.ResponseWriter, r *http.Request) error {
 		gs.logf("failed to marshal welcome JSON: %v", jerr)
 	}
 
-	// TODO: clean up this broadcast
-	// Broadcast peerJoin to existing subscribers (excluding the new one)
-	// Set a default state and pick a color from a small palette
+	// Add this new subscriber
+	// Broadcast peerJoin to existing subscribers except the new one
+	// Set a default start state 
 	peerJoin := struct {
 		Type  string `json:"type"`
 		ID    int    `json:"id"`
 		State string `json:"state"`
-		Color string `json:"color"`
 	}{
 		Type: "PEER_JOIN",
 		ID:   sub.ID(),
-		State: "---",
-		Color: colors[sub.ID()%len(colors)], // TODO: fix/clear this
+		State: "Joined", // Default start state
 	}
 
-	pj, pjerr := json.Marshal(peerJoin)
+	pj, pjerr := json.Marshal(peerJoin) // Turn into []byte
 
-	// Check for joining errors
 	if pjerr == nil {
 		gs.broadcastAll(pj)
 	} else {
+		// Joining error because data could not be marshalled
 		gs.logf("failed to marshal peerJoin JSON: %v", pjerr)
 	}
-	// TODO: new code ends here
 
-	// Context that is canceled when WebSocket's read connection is closed
+	// Init Context that is canceled when WebSocket's read connection is closed
 	// Ensures the loop below stops when client stops reading
-	ctx := conn.CloseRead(context.Background())
+	ctx := conn.CloseRead(context.Background()) // TODO: Disable this tio enable client to send messasges back (currently is read only)
 
 	// While loop
 	// Listens for messages arriving, with timeout
