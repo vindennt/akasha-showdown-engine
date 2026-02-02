@@ -22,9 +22,9 @@ var (
 )
 
 type Peer struct {
-	Type  string
-	ID    int
-	State string
+	Type  string `json:"type"`
+    ID    int    `json:"id"`
+    State string `json:"state"`
 }
 
 // subscriber represents a subscriber
@@ -43,7 +43,7 @@ func newSubscriber(messc chan []byte, closeSlow func()) *subscriber {
 	nextSubscriberID++
 	nextSubscriberIDMu.Unlock()
 
-	log.Printf("assigned new subscriber id=%d", id)
+	log.Printf("Assigned new subscriber id=%d", id)
 
 	return &subscriber{
 		id:        id,
@@ -51,12 +51,6 @@ func newSubscriber(messc chan []byte, closeSlow func()) *subscriber {
 		closeSlow: closeSlow,
 	}
 }
-
-// Old subscriber implementation
-// type subscriber struct {
-// 	messc	chan []byte // Channel for incoming messages
-// 	closeSlow	func()
-// }
 
 // ID returns the subscriber's id.
 func (s *subscriber) ID() int { return s.id }
@@ -117,7 +111,7 @@ func (gs *gameServer) publish(msg []byte) {
 	gs.subscribersMutex.Lock()
 	defer gs.subscribersMutex.Unlock()
 
-	// Blocks until the rate limiter allows publishing
+	// Blocks until the rate limiter allows publishing (indefintely with background context)
 	gs.publishLimiter.Wait(context.Background())
 
 	// For each subscriber sub: send message msg on their channel messc
@@ -162,20 +156,6 @@ func (gs *gameServer) addSubscriber(sub *subscriber) {
 	gs.subscribers[sub] = struct{}{}
 }
 
-// broadcastAll sends msg to all subscribers.
-func (gs *gameServer) broadcastAll(msg []byte) {
-	gs.subscribersMutex.Lock()
-	defer gs.subscribersMutex.Unlock()
-
-	for sub := range gs.subscribers {
-		select {
-		case sub.messc <- msg:
-		default:
-			sub.closeSlow()
-		}
-	}
-}
-
 // Removes sub from subscribers map
 func (gs *gameServer) removeSubscriber(sub *subscriber) {
 	gs.subscribersMutex.Lock()
@@ -218,6 +198,24 @@ func (gs *gameServer) subscribeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// subscribersList array of all peers
+func (gs *gameServer) getSubscribers() []Peer {
+    gs.subscribersMutex.Lock()
+    defer gs.subscribersMutex.Unlock()
+
+    peers := make([]Peer, 0, len(gs.subscribers))
+
+    for sub := range gs.subscribers {
+        peers = append(peers, Peer{
+			Type: "PEER_JOIN",
+            ID:    sub.ID(),
+            State: "Joined", // TODO: default
+        })
+    }
+
+    return peers
+}
+
 // Subscribes the given WebSocket to all broadcasted messages
 // Creates a subscriber with a message channel and registers them.
 // Listens for all messages and writes them to the WebSocket
@@ -241,6 +239,19 @@ func (gs *gameServer) subscribe(w http.ResponseWriter, r *http.Request) error {
 			conn.Close(websocket.StatusPolicyViolation, "Connection is too slow to keep up with messages")
 		}
 	})
+
+	// Deferred leave handling
+	defer func() {
+		// Handle leaving
+		peerLeave := Peer{
+			Type: "PEER_LEAVE",
+			ID:   sub.ID(),
+			State: "Left",
+		}
+
+		pl, _ := json.Marshal(peerLeave) // Turn into []byte
+		gs.publish(pl)
+	}()
 
 	// Adding and removing subscribers each handle mutex on their own, so we don't need to lock here
 	gs.addSubscriber(sub)
@@ -274,43 +285,40 @@ func (gs *gameServer) subscribe(w http.ResponseWriter, r *http.Request) error {
 
 	// Send welcome message with assigned id as JSON so clients can decode it
 	welcome := struct {
-		Type string `json:"type"`
-		ID   int    `json:"id"`
-	}{Type: "welcome", ID: sub.ID()}
-	b, jerr := json.Marshal(welcome)
-	if jerr == nil {
+		Type string  `json:"type"`
+		ID   int     `json:"id"`
+		Peers []Peer `json:"peers"`
+
+	}{
+		Type: "WELCOME",
+		ID: sub.ID(),
+		Peers: gs.getSubscribers(), 
+	}
+	
+	wj, wjerr := json.Marshal(welcome)
+	if wjerr == nil {
 		// Try to enqueue the message; if buffer is full, try a direct write
 		select {
-		case sub.messc <- b:
+		case sub.messc <- wj:
 		default:
 			// Fallback: attempt direct write to ensure client receives id
-			_ = writeTimeout(context.Background(), time.Second*5, conn, b)
+			_ = writeTimeout(context.Background(), time.Second*5, conn, wj)
 		}
 	} else {
-		gs.logf("failed to marshal welcome JSON: %v", jerr)
+		gs.logf("failed to marshal welcome JSON: %v", wjerr)
 	}
 
 	// Add this new subscriber
 	// Broadcast peerJoin to existing subscribers except the new one
 	// Set a default start state 
-	peerJoin := struct {
-		Type  string `json:"type"`
-		ID    int    `json:"id"`
-		State string `json:"state"`
-	}{
+	peerJoin := Peer{
 		Type: "PEER_JOIN",
 		ID:   sub.ID(),
 		State: "Joined", // Default start state
 	}
 
-	pj, pjerr := json.Marshal(peerJoin) // Turn into []byte
-
-	if pjerr == nil {
-		gs.broadcastAll(pj)
-	} else {
-		// Joining error because data could not be marshalled
-		gs.logf("failed to marshal peerJoin JSON: %v", pjerr)
-	}
+	pj, _ := json.Marshal(peerJoin) // Turn into []byte
+	gs.publish(pj)
 
 	// Init Context that is canceled when WebSocket's read connection is closed
 	// Ensures the loop below stops when client stops reading
