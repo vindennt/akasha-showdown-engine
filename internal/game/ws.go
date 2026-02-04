@@ -1,4 +1,4 @@
-package main
+package game
 
 import (
 	"context"
@@ -55,7 +55,7 @@ func newSubscriber(messc chan []byte, closeSlow func()) *subscriber {
 // ID returns the subscriber's id.
 func (s *subscriber) ID() int { return s.id }
 
-type gameServer struct {
+type GameServer struct {
 	// Controls the message queue's window size
 	// Messages exceeding the window get dropped
 	subscriberMessageBuffer int
@@ -79,9 +79,9 @@ type gameServer struct {
 	subscribers   map[*subscriber]struct{}
 }
 
-// gameServer Constructor
-func newGameServer() *gameServer {
-	gs := &gameServer{
+// GameServer Constructor
+func NewGameServer() *GameServer {
+	gs := &GameServer{
 		subscriberMessageBuffer: 12,
 		publishLimiter: 		rate.NewLimiter(rate.Every(time.Millisecond*100), 8),
 		logf:					log.Printf,
@@ -97,13 +97,13 @@ func newGameServer() *gameServer {
 
 // Implement http.Handler interface so it can be an http server handler
 // Delegates requests to the appropriate handler
-func (gs *gameServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (gs *GameServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	gs.serveMux.ServeHTTP(w, r)
 }
 
 
 // Publish message to all subscribers in subscribers map
-func (gs *gameServer) publish(msg []byte) {
+func (gs *GameServer) publish(msg []byte) {
 	// Lock mutex to ensure thread-safe access to subscribers map
 	// Unlock mutex after function ends no matter what
 	// Necessary because of panics or early returns during
@@ -126,7 +126,7 @@ func (gs *gameServer) publish(msg []byte) {
 	}
 }
 
-func (gs *gameServer) publishHandler(w http.ResponseWriter, r *http.Request) {
+func (gs *GameServer) publishHandler(w http.ResponseWriter, r *http.Request) {
 	// Return Method Not Allowed if not POST
 	if r.Method != "POST" {
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
@@ -146,7 +146,7 @@ func (gs *gameServer) publishHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // Adds sub to subscribers map
-func (gs *gameServer) addSubscriber(sub *subscriber) {
+func (gs *GameServer) addSubscriber(sub *subscriber) {
 	gs.subscribersMutex.Lock()
 	// Manual unlock is okay too but less safe in case of map error
 	defer gs.subscribersMutex.Unlock()
@@ -157,7 +157,7 @@ func (gs *gameServer) addSubscriber(sub *subscriber) {
 }
 
 // Removes sub from subscribers map
-func (gs *gameServer) removeSubscriber(sub *subscriber) {
+func (gs *GameServer) removeSubscriber(sub *subscriber) {
 	gs.subscribersMutex.Lock()
 	defer gs.subscribersMutex.Unlock()
 
@@ -179,7 +179,7 @@ func writeTimeout(ctx context.Context, timeout time.Duration, conn *websocket.Co
 // Accepts WebSocket connections and subscribes clients
 // to incoming messages
 // Handles errors and whether client or server canceled connection already
-func (gs *gameServer) subscribeHandler(w http.ResponseWriter, r *http.Request) {
+func (gs *GameServer) subscribeHandler(w http.ResponseWriter, r *http.Request) {
 	err := gs.subscribe(w, r)
 	// Check if context is canceled already by server or client
 	if errors.Is(err, context.Canceled) {
@@ -199,7 +199,7 @@ func (gs *gameServer) subscribeHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // subscribersList array of all peers
-func (gs *gameServer) getSubscribers() []Peer {
+func (gs *GameServer) getSubscribers() []Peer {
     gs.subscribersMutex.Lock()
     defer gs.subscribersMutex.Unlock()
 
@@ -222,7 +222,7 @@ func (gs *gameServer) getSubscribers() []Peer {
 // Uses CloseRead to keep reading from the connection for process
 // control messages, and for deciding to cancel context.
 // If context ctx is canceled or error occurs, returns and deletes the subscription
-func (gs *gameServer) subscribe(w http.ResponseWriter, r *http.Request) error {
+func (gs *GameServer) subscribe(w http.ResponseWriter, r *http.Request) error {
 	var mutex sync.Mutex
 	var conn *websocket.Conn
 	var closed bool

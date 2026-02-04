@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/signal"
 	"time"
+
+	"github.com/vindennt/akasha-showdown-engine/internal/game"
 )
 
 func main() {
@@ -35,7 +37,7 @@ func run() error {
 	log.Printf("Now listening on ws://%v", l.Addr())
 
 	// Create HTTP server using gameServer websocket handler
-	gs := newGameServer()
+	gs := game.NewGameServer()
 	s := &http.Server{
 		Handler: gs,
 		ReadTimeout: time.Second * 10,
