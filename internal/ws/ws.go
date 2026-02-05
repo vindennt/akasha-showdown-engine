@@ -16,45 +16,6 @@ import (
 	"github.com/coder/websocket"
 )
 
-var (
-	nextSubscriberID   int
-	nextSubscriberIDMu sync.Mutex
-)
-
-type Peer struct {
-	Type  string `json:"type"`
-    ID    int    `json:"id"`
-    State string `json:"state"`
-}
-
-// subscriber represents a subscriber
-// Each subscriber gets a unique numeric id (starting at 0), a message channel
-// and a closeSlow callback.
-type subscriber struct {
-	id        int         // unique subscriber id (0-based)
-	messc     chan []byte // Channel for incoming messages
-	closeSlow func()
-}
-
-// newSubscriber allocates a subscriber id (starting at 0) and returns a ready subscriber.
-func newSubscriber(messc chan []byte, closeSlow func()) *subscriber {
-	nextSubscriberIDMu.Lock()
-	id := nextSubscriberID
-	nextSubscriberID++
-	nextSubscriberIDMu.Unlock()
-
-	log.Printf("Assigned new subscriber id=%d", id)
-
-	return &subscriber{
-		id:        id,
-		messc:     messc,
-		closeSlow: closeSlow,
-	}
-}
-
-// ID returns the subscriber's id.
-func (s *subscriber) ID() int { return s.id }
-
 type GameServer struct {
 	// Controls the message queue's window size
 	// Messages exceeding the window get dropped
@@ -76,7 +37,7 @@ type GameServer struct {
 	subscribersMutex sync.Mutex
 	
 	// Map containing pointers to subscribers
-	subscribers   map[*subscriber]struct{}
+	subscribers   map[*Subscriber]struct{}
 }
 
 // GameServer Constructor
@@ -85,7 +46,7 @@ func NewGameServer() *GameServer {
 		subscriberMessageBuffer: 12,
 		publishLimiter: 		rate.NewLimiter(rate.Every(time.Millisecond*100), 8),
 		logf:					log.Printf,
-		subscribers:			make(map[*subscriber]struct{}),
+		subscribers:			make(map[*Subscriber]struct{}),
 	}
 
 	// Serves HTTP static file from the current directory
@@ -114,14 +75,14 @@ func (gs *GameServer) publish(msg []byte) {
 	// Blocks until the rate limiter allows publishing (indefintely with background context)
 	gs.publishLimiter.Wait(context.Background())
 
-	// For each subscriber sub: send message msg on their channel messc
+	// For each subscriber s: send message msg on their channel messc
 	// If the subscriber cannot immediately receive the message,
 	// they are considered too slow and closeSlow is called
-	for sub := range gs.subscribers {
+	for s := range gs.subscribers {
 		select {
-		case sub.messc <- msg:
+		case s.messc <- msg:
 		default:
-			sub.closeSlow()
+			s.closeSlow()
 		}
 	}
 }
@@ -145,24 +106,24 @@ func (gs *GameServer) publishHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
-// Adds sub to subscribers map
-func (gs *GameServer) addSubscriber(sub *subscriber) {
+// Adds s to subscribers map
+func (gs *GameServer) addSubscriber(s *Subscriber) {
 	gs.subscribersMutex.Lock()
 	// Manual unlock is okay too but less safe in case of map error
 	defer gs.subscribersMutex.Unlock()
 
 	// Add subscriber to subscribers map
 	// struct is empty to be 0 bytes, the key is the sub pointer
-	gs.subscribers[sub] = struct{}{}
+	gs.subscribers[s] = struct{}{}
 }
 
-// Removes sub from subscribers map
-func (gs *GameServer) removeSubscriber(sub *subscriber) {
+// Removes s from subscribers map
+func (gs *GameServer) removeSubscriber(s *Subscriber) {
 	gs.subscribersMutex.Lock()
 	defer gs.subscribersMutex.Unlock()
 
 	// Remove subscriber from subscribers map
-	delete(gs.subscribers, sub)
+	delete(gs.subscribers, s)
 }
 
 // Writes msg to the WebSocket connection conn
@@ -205,10 +166,10 @@ func (gs *GameServer) getSubscribers() []Peer {
 
     peers := make([]Peer, 0, len(gs.subscribers))
 
-    for sub := range gs.subscribers {
+    for s := range gs.subscribers {
         peers = append(peers, Peer{
 			Type: "PEER_JOIN",
-            ID:    sub.ID(),
+            ID:    s.ID(),
             State: "Joined", // TODO: default
         })
     }
@@ -228,7 +189,7 @@ func (gs *GameServer) subscribe(w http.ResponseWriter, r *http.Request) error {
 	var closed bool
 
 	// Initialize subscriber with a unique id
-	sub := newSubscriber(make(chan []byte, gs.subscriberMessageBuffer), func() {
+	s := NewSubscriber(make(chan []byte, gs.subscriberMessageBuffer), func() {
 		// Using mutex ensures wrong sub isnt set to closed
 		mutex.Lock()
 		defer mutex.Unlock()
@@ -245,7 +206,7 @@ func (gs *GameServer) subscribe(w http.ResponseWriter, r *http.Request) error {
 		// Handle leaving
 		peerLeave := Peer{
 			Type: "PEER_LEAVE",
-			ID:   sub.ID(),
+			ID:   s.ID(),
 			State: "Left",
 		}
 
@@ -254,8 +215,8 @@ func (gs *GameServer) subscribe(w http.ResponseWriter, r *http.Request) error {
 	}()
 
 	// Adding and removing subscribers each handle mutex on their own, so we don't need to lock here
-	gs.addSubscriber(sub)
-	defer gs.removeSubscriber(sub) // Ensure subscriber is removed when function ends
+	gs.addSubscriber(s)
+	defer gs.removeSubscriber(s) // Ensure subscriber is removed when function ends
 
 	// Websocket options
 	// TODO: Do not allow insecure skip verify, 
@@ -291,7 +252,7 @@ func (gs *GameServer) subscribe(w http.ResponseWriter, r *http.Request) error {
 
 	}{
 		Type: "WELCOME",
-		ID: sub.ID(),
+		ID: s.ID(),
 		Peers: gs.getSubscribers(), 
 	}
 	
@@ -299,7 +260,7 @@ func (gs *GameServer) subscribe(w http.ResponseWriter, r *http.Request) error {
 	if wjerr == nil {
 		// Try to enqueue the message; if buffer is full, try a direct write
 		select {
-		case sub.messc <- wj:
+		case s.messc <- wj:
 		default:
 			// Fallback: attempt direct write to ensure client receives id
 			_ = writeTimeout(context.Background(), time.Second*5, conn, wj)
@@ -313,7 +274,7 @@ func (gs *GameServer) subscribe(w http.ResponseWriter, r *http.Request) error {
 	// Set a default start state 
 	peerJoin := Peer{
 		Type: "PEER_JOIN",
-		ID:   sub.ID(),
+		ID:   s.ID(),
 		State: "Joined", // Default start state
 	}
 
@@ -329,7 +290,7 @@ func (gs *GameServer) subscribe(w http.ResponseWriter, r *http.Request) error {
 	// Listens for cancellation of the context (closed connection)
 	for {
 		select {
-			case msg := <-sub.messc:
+			case msg := <-s.messc:
 				// 5 second timeout for writing messages
 				err := writeTimeout(ctx, time.Second*5, conn, msg)
 				if err != nil {
