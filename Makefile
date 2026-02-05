@@ -8,7 +8,7 @@ build:
 	docker build -t $(IMAGE_NAME) .
 
 run:
-	docker run --rm --name $(CONTAINER_NAME) -p $(PORT):$(PORT) $(IMAGE_NAME)
+	docker run --rm --name $(CONTAINER_NAME) --env-file .env -p $(PORT):$(PORT) $(IMAGE_NAME)
 
 stop:
 	docker stop $(CONTAINER_NAME) || true

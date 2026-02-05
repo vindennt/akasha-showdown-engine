@@ -2,7 +2,8 @@ package main
 
 import (
 	"context"
-	"errors"
+	// "errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -10,40 +11,60 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/vindennt/akasha-showdown-engine/internal/game"
+	"github.com/vindennt/akasha-showdown-engine/internal/ws"
+	// "github.com/vindennt/akasha-showdown-engine/internal/middleware"
+	"github.com/vindennt/akasha-showdown-engine/internal/config"
+	// "github.com/vindennt/akasha-showdown-engine/internal/api"
 )
 
 func main() {
 	log.Printf("Starting akasha-showdown-engine server...")
 
-	err := run()
+	cfg, cfgErr := config.LoadConfig()
+	if cfgErr != nil {
+		log.Fatalf("Could not load config: %v", cfgErr)
+	}
+
+	err := run(cfg)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Could not start server: %v", err)
 	}
 }
 
 // Runs the HTTP server
 // Returns any errors
-func run() error {
-	if len(os.Args) < 2 {
-		return errors.New("Error: Provide an address to listen on as the first argument")
-	}
+func run(cfg *config.Config) error {
+	// if len(os.Args) < 2 {
+	// 	return errors.New("Error: Provide listening address for gameserver as first argument")
+	// }
 
-	// Create TCP address listener l
-	l, err := net.Listen("tcp", os.Args[1])
+	mux := http.NewServeMux()
+	// TODO:
+	// api.RegisterRoutes(mux, cfg)
+
+	// Create HTTP server using gameServer websocket handler
+	gs := ws.NewGameServer()
+	mux.Handle("/ws/", http.StripPrefix("/ws", gs))
+
+	// TODO:
+	// corsHandler := middleware.CORS(cfg.AllowedOrigin)(mux)
+	// logHandler := middleware.Logging(corsHandler)
+	
+
+	// Create TCP address listener "l"
+	addr := fmt.Sprintf(":%s", cfg.Port)
+	l, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
-	log.Printf("Now listening on ws://%v", l.Addr())
-
-	// Create HTTP server using gameServer websocket handler
-	gs := game.NewGameServer()
+	log.Printf("Server listening on http://localhost%s", addr)
 	s := &http.Server{
-		Handler: gs,
+		Handler: mux,
 		ReadTimeout: time.Second * 10,
 		WriteTimeout: time.Second * 10,
 	}
-
+	log.Printf("Now listening on ws://%v", l.Addr())
+	
 	// Create error channel
 	errc := make(chan error, 1)
 
@@ -71,5 +92,6 @@ func run() error {
 	// Free context resources and shutdown the HTTP server cleanly
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
+
 	return s.Shutdown(ctx)
 }
