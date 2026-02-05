@@ -14,7 +14,7 @@ import (
 	"github.com/vindennt/akasha-showdown-engine/internal/ws"
 	// "github.com/vindennt/akasha-showdown-engine/internal/middleware"
 	"github.com/vindennt/akasha-showdown-engine/internal/config"
-	// "github.com/vindennt/akasha-showdown-engine/internal/api"
+	"github.com/vindennt/akasha-showdown-engine/internal/api"
 )
 
 func main() {
@@ -38,19 +38,20 @@ func run(cfg *config.Config) error {
 	// 	return errors.New("Error: Provide listening address for gameserver as first argument")
 	// }
 
+	// Main HTTP request router
 	mux := http.NewServeMux()
-	// TODO:
-	// api.RegisterRoutes(mux, cfg)
-
-	// Create HTTP server using gameServer websocket handler
+	// Game and websocket HTTP handler
 	gs := ws.NewGameServer()
+
 	mux.Handle("/ws/", http.StripPrefix("/ws", gs))
+	api.RegisterRoutes(mux, cfg)
+	// auth.RegisterRoutes(mux, cfg) // TODO:
+	
 
 	// TODO:
 	// corsHandler := middleware.CORS(cfg.AllowedOrigin)(mux)
 	// logHandler := middleware.Logging(corsHandler)
 	
-
 	// Create TCP address listener "l"
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	l, err := net.Listen("tcp", addr)
