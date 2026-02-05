@@ -38,10 +38,13 @@ func LoadConfig() (*Config, error) {
 
 	supabaseURL := os.Getenv("SUPABASE_URL")
 
-	// Extract project ref key
+	// Extract project ref key (strip protocol first)
 	projectRef := supabaseURL
-	if idx := strings.Index(supabaseURL, ".supabase.co"); idx != -1 {
-		projectRef = supabaseURL[:idx]
+	// Remove https:// or http:// prefix
+	projectRef = strings.TrimPrefix(projectRef, "https://")
+	projectRef = strings.TrimPrefix(projectRef, "http://")
+	if idx := strings.Index(projectRef, ".supabase.co"); idx != -1 {
+		projectRef = projectRef[:idx]
 	}
 
 	cfg := &Config{
