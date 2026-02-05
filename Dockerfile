@@ -17,4 +17,4 @@ COPY --from=builder /app/engine .
 
 EXPOSE 8282
 
-CMD ["./engine", ":8282"]
+CMD ["./engine"]

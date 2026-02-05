@@ -1,6 +1,4 @@
-IMAGE_NAME = akasha-engine
-CONTAINER_NAME = akasha-engine
-PORT = 8282
+include .env
 
 .PHONY: run build stop make rebuild
 
