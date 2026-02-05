@@ -10,9 +10,9 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/vindennt/akasha-showdown-engine/internal/ws"
-	"github.com/vindennt/akasha-showdown-engine/internal/config"
 	"github.com/vindennt/akasha-showdown-engine/internal/api"
+	"github.com/vindennt/akasha-showdown-engine/internal/config"
+	"github.com/vindennt/akasha-showdown-engine/internal/ws"
 )
 
 func main() {
@@ -38,10 +38,7 @@ func run(cfg *config.Config) error {
 
 	// Main HTTP request router
 	mux := http.NewServeMux()
-	// Game and websocket HTTP handler
-	gs := ws.NewGameServer()
-
-	mux.Handle("/ws/", http.StripPrefix("/ws", gs))
+	ws.NewGameServer(mux)
 	api.RegisterRoutes(mux, cfg)
 	
 	// Create TCP address listener "l"

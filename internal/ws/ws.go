@@ -30,7 +30,7 @@ type GameServer struct {
 	logf func(format string, v ...any)
 
 	// Router for endpoints to corresponding handlers e.g. /chat
-	serveMux http.ServeMux
+	serveMux *http.ServeMux
 
 	// Mutex to ensure thread-safe (goroutine-safe) access to subscribers
 	// Prevents race conditions
@@ -41,17 +41,20 @@ type GameServer struct {
 }
 
 // GameServer Constructor
-func NewGameServer() *GameServer {
+func NewGameServer(mux *http.ServeMux) *GameServer {
 	gs := &GameServer{
 		subscriberMessageBuffer: 12,
 		publishLimiter: 		rate.NewLimiter(rate.Every(time.Millisecond*100), 8),
 		logf:					log.Printf,
 		subscribers:			make(map[*Subscriber]struct{}),
+		serveMux: 				mux,
 	}
 
 	// Serves HTTP static file from the current directory
-	gs.serveMux.HandleFunc("/subscribe", gs.subscribeHandler)
-	gs.serveMux.HandleFunc("/publish", gs.publishHandler)
+	// gs.serveMux.HandleFunc("/subscribe", gs.subscribeHandler)
+	// gs.serveMux.HandleFunc("/publish", gs.publishHandler)
+	gs.serveMux.HandleFunc("/ws/subscribe", gs.subscribeHandler)
+	gs.serveMux.HandleFunc("/ws/publish", gs.publishHandler)
 
 	return gs
 }
