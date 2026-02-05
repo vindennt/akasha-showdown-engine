@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	// "errors"
 	"fmt"
 	"log"
 	"net"
@@ -12,7 +11,6 @@ import (
 	"time"
 
 	"github.com/vindennt/akasha-showdown-engine/internal/ws"
-	// "github.com/vindennt/akasha-showdown-engine/internal/middleware"
 	"github.com/vindennt/akasha-showdown-engine/internal/config"
 	"github.com/vindennt/akasha-showdown-engine/internal/api"
 )
@@ -45,12 +43,6 @@ func run(cfg *config.Config) error {
 
 	mux.Handle("/ws/", http.StripPrefix("/ws", gs))
 	api.RegisterRoutes(mux, cfg)
-	// auth.RegisterRoutes(mux, cfg) // TODO:
-	
-
-	// TODO:
-	// corsHandler := middleware.CORS(cfg.AllowedOrigin)(mux)
-	// logHandler := middleware.Logging(corsHandler)
 	
 	// Create TCP address listener "l"
 	addr := fmt.Sprintf(":%s", cfg.Port)

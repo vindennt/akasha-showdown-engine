@@ -2,6 +2,8 @@ package config
 
 import (
 	"os"
+	"strings"
+
 	_ "github.com/joho/godotenv/autoload"
 )
 
@@ -9,7 +11,10 @@ import (
 type Config struct {
 	// Logs  LogConfig
 	// DB    PostgresConfig
-	Port  string
+	Port               string
+	SupabaseURL        string
+	SupabaseProjectRef string
+	SupabaseAnonKey    string
 	// AllowedOrigin string
 }
 
@@ -26,8 +31,24 @@ type Config struct {
 // }
 
 func LoadConfig() (*Config, error) {
+	key := os.Getenv("SUPABASE_ANON_KEY")
+	if key == "" {
+		key = os.Getenv("SUPABASE_KEY")
+	}
+
+	supabaseURL := os.Getenv("SUPABASE_URL")
+
+	// Extract project ref key
+	projectRef := supabaseURL
+	if idx := strings.Index(supabaseURL, ".supabase.co"); idx != -1 {
+		projectRef = supabaseURL[:idx]
+	}
+
 	cfg := &Config{
-		Port: os.Getenv("PORT"),
+		Port:               os.Getenv("PORT"),
+		SupabaseURL:        supabaseURL,
+		SupabaseProjectRef: projectRef,
+		SupabaseAnonKey:    key,
 		// Logs: LogConfig{
 		// 	Style: os.Getenv("LOG_STYLE"),
 		// 	Level: os.Getenv("LOG_LEVEL"),
