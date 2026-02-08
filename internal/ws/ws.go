@@ -14,6 +14,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/coder/websocket"
+	"github.com/vindennt/akasha-showdown-engine/internal/middleware"
 )
 
 type GameServer struct {
@@ -32,29 +33,45 @@ type GameServer struct {
 	// Router for endpoints to corresponding handlers e.g. /chat
 	serveMux *http.ServeMux
 
-	// Mutex to ensure thread-safe (goroutine-safe) access to subscribers
-	// Prevents race conditions
-	subscribersMutex sync.Mutex
-	
-	// Map containing pointers to subscribers
-	subscribers   map[*Subscriber]struct{}
+	// TODO: multiple lobby support. create,join,leave,delete lobby UI and endpoints
+	lobbiesMutex sync.Mutex
+	lobbies      map[string]*Lobby // Map of lobby IDs
+	globalLobby  *Lobby            // Mian lobby all clients are connected to
+
+	// Matchmaking queue
+	queueMutex       sync.Mutex
+	matchmakingQueue []int // subscriber IDs
 }
 
 // GameServer Constructor
 func NewGameServer(mux *http.ServeMux) *GameServer {
-	gs := &GameServer{
-		subscriberMessageBuffer: 12,
-		publishLimiter: 		rate.NewLimiter(rate.Every(time.Millisecond*100), 8),
-		logf:					log.Printf,
-		subscribers:			make(map[*Subscriber]struct{}),
-		serveMux: 				mux,
+	globalLobby := &Lobby{
+		ID:          "global",
+		Name:        "Global Lobby",
+		subscribers: make(map[int]*Subscriber),
 	}
 
-	// Serves HTTP static file from the current directory
-	// gs.serveMux.HandleFunc("/subscribe", gs.subscribeHandler)
-	// gs.serveMux.HandleFunc("/publish", gs.publishHandler)
+	gs := &GameServer{
+		subscriberMessageBuffer: 12,
+		publishLimiter:          rate.NewLimiter(rate.Every(time.Millisecond*100), 8),
+		logf:                    log.Printf,
+		serveMux:                mux,
+		lobbies:                 make(map[string]*Lobby),
+		globalLobby:             globalLobby,
+		matchmakingQueue:        make([]int, 0), // First players in should get priority. Might use a queue window later
+	}
+
+	// Add global lobby to lobbies map
+	gs.lobbies["global"] = globalLobby
+
+	// Register WebSocket endpoints
 	gs.serveMux.HandleFunc("/ws/subscribe", gs.subscribeHandler)
 	gs.serveMux.HandleFunc("/ws/publish", gs.publishHandler)
+
+	// Chat and lobby endpoints with CORS support
+	gs.serveMux.HandleFunc("/ws/chat", middleware.CORS(gs.chatHandler))
+	gs.serveMux.HandleFunc("/ws/lobby/join", middleware.CORS(gs.joinLobbyHandler))
+	gs.serveMux.HandleFunc("/ws/queue/join", middleware.CORS(gs.joinQueueHandler))
 
 	return gs
 }
@@ -66,26 +83,22 @@ func (gs *GameServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 
-// Publish message to all subscribers in subscribers map
+// Publish message to all subscribers in global lobby
 func (gs *GameServer) publish(msg []byte) {
-	// Lock mutex to ensure thread-safe access to subscribers map
-	// Unlock mutex after function ends no matter what
-	// Necessary because of panics or early returns during
-	// waiting or iterations
-	gs.subscribersMutex.Lock()
-	defer gs.subscribersMutex.Unlock()
+	gs.globalLobby.mutex.Lock()
+	defer gs.globalLobby.mutex.Unlock()
 
 	// Blocks until the rate limiter allows publishing (indefintely with background context)
 	gs.publishLimiter.Wait(context.Background())
 
-	// For each subscriber s: send message msg on their channel messc
+	// For each subscriber: send message on their channel
 	// If the subscriber cannot immediately receive the message,
 	// they are considered too slow and closeSlow is called
-	for s := range gs.subscribers {
+	for _, s := range gs.globalLobby.subscribers {
 		select {
 		case s.messc <- msg:
 		default:
-			s.closeSlow()
+			go s.closeSlow()
 		}
 	}
 }
@@ -109,24 +122,33 @@ func (gs *GameServer) publishHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
-// Adds s to subscribers map
+// Add single subscriber to global lobby
 func (gs *GameServer) addSubscriber(s *Subscriber) {
-	gs.subscribersMutex.Lock()
-	// Manual unlock is okay too but less safe in case of map error
-	defer gs.subscribersMutex.Unlock()
-
-	// Add subscriber to subscribers map
-	// struct is empty to be 0 bytes, the key is the sub pointer
-	gs.subscribers[s] = struct{}{}
+	gs.globalLobby.mutex.Lock()
+	defer gs.globalLobby.mutex.Unlock()
+	gs.globalLobby.subscribers[s.ID()] = s
 }
 
-// Removes s from subscribers map
+// Remove single subscriber from global lobby
 func (gs *GameServer) removeSubscriber(s *Subscriber) {
-	gs.subscribersMutex.Lock()
-	defer gs.subscribersMutex.Unlock()
+	gs.globalLobby.mutex.Lock()
+	defer gs.globalLobby.mutex.Unlock()
+	delete(gs.globalLobby.subscribers, s.ID())
+}
 
-	// Remove subscriber from subscribers map
-	delete(gs.subscribers, s)
+// GetSubscriber returns a subscriber by ID (O(1) lookup)
+// Returns nil if subscriber not found
+func (gs *GameServer) GetSubscriber(id int) *Subscriber {
+	gs.globalLobby.mutex.Lock()
+	defer gs.globalLobby.mutex.Unlock()
+	return gs.globalLobby.subscribers[id]
+}
+
+// SubscriberCount returns the number of subscribers in global lobby
+func (gs *GameServer) SubscriberCount() int {
+	gs.globalLobby.mutex.Lock()
+	defer gs.globalLobby.mutex.Unlock()
+	return len(gs.globalLobby.subscribers)
 }
 
 // Writes msg to the WebSocket connection conn
@@ -162,22 +184,22 @@ func (gs *GameServer) subscribeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// subscribersList array of all peers
+// subscribersList array of all peers in global lobby
 func (gs *GameServer) getSubscribers() []Peer {
-    gs.subscribersMutex.Lock()
-    defer gs.subscribersMutex.Unlock()
+	gs.globalLobby.mutex.Lock()
+	defer gs.globalLobby.mutex.Unlock()
 
-    peers := make([]Peer, 0, len(gs.subscribers))
+	peers := make([]Peer, 0, len(gs.globalLobby.subscribers))
 
-    for s := range gs.subscribers {
-        peers = append(peers, Peer{
-			Type: "PEER_JOIN",
-            ID:    s.ID(),
-            State: "Joined", // TODO: default
-        })
-    }
+	for _, s := range gs.globalLobby.subscribers {
+		peers = append(peers, Peer{
+			Type:  "PEER_JOIN",
+			ID:    s.ID(),
+			State: "Joined", // TODO: default
+		})
+	}
 
-    return peers
+	return peers
 }
 
 // Subscribes the given WebSocket to all broadcasted messages
@@ -220,6 +242,27 @@ func (gs *GameServer) subscribe(w http.ResponseWriter, r *http.Request) error {
 	// Adding and removing subscribers each handle mutex on their own, so we don't need to lock here
 	gs.addSubscriber(s)
 	defer gs.removeSubscriber(s) // Ensure subscriber is removed when function ends
+
+	// TODO: consider refactoring this to handler?
+	// Broadcast lobby join event
+	joinEvent := LobbyEvent{
+		Type:    "LOBBY_JOIN",
+		UserID:  s.ID(),
+		LobbyID: "global",
+	}
+	joinMsg, _ := json.Marshal(joinEvent)
+	gs.publish(joinMsg)
+
+	// Broadcast lobby leave event when disconnecting
+	defer func() {
+		leaveEvent := LobbyEvent{
+			Type:    "LOBBY_LEAVE",
+			UserID:  s.ID(),
+			LobbyID: "global",
+		}
+		leaveMsg, _ := json.Marshal(leaveEvent)
+		gs.publish(leaveMsg)
+	}()
 
 	// Websocket options
 	// TODO: Do not allow insecure skip verify, 

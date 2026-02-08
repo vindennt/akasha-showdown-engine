@@ -16,10 +16,11 @@ type Peer struct {
 	State string `json:"state"`
 }
 
+// Lobby represents a chat/game lobby
 type Lobby struct {
 	ID          string
 	Name        string
-	subscribers map[*Subscriber]struct{}
+	subscribers map[int]*Subscriber // Map subscriber ID to subscriber for O(1) lookup
 	mutex       sync.Mutex
 }
 
