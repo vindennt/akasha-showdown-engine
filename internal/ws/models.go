@@ -16,6 +16,13 @@ type Peer struct {
 	State string `json:"state"`
 }
 
+type Lobby struct {
+	ID          string
+	Name        string
+	subscribers map[*Subscriber]struct{}
+	mutex       sync.Mutex
+}
+
 type ChatMessage struct {
 	Type      string `json:"type"` // "CHAT_MESSAGE"
 	SenderID  int    `json:"sender_id"`
