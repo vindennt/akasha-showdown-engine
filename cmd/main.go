@@ -12,6 +12,7 @@ import (
 
 	"github.com/vindennt/akasha-showdown-engine/internal/api"
 	"github.com/vindennt/akasha-showdown-engine/internal/config"
+	"github.com/vindennt/akasha-showdown-engine/internal/db"
 	"github.com/vindennt/akasha-showdown-engine/internal/ws"
 )
 
@@ -36,10 +37,12 @@ func run(cfg *config.Config) error {
 	// 	return errors.New("Error: Provide listening address for gameserver as first argument")
 	// }
 
+	dbClient := db.NewClient(cfg)
+
 	// Main HTTP request router
 	mux := http.NewServeMux()
-	ws.NewGameServer(mux)
-	api.RegisterRoutes(mux, cfg)
+	ws.NewGameServer(mux, dbClient)
+	api.RegisterRoutes(mux, cfg, dbClient)
 	
 	// Create TCP address listener "l"
 	addr := fmt.Sprintf(":%s", cfg.Port)

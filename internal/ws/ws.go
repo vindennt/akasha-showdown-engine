@@ -14,6 +14,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/coder/websocket"
+	"github.com/vindennt/akasha-showdown-engine/internal/db"
 	"github.com/vindennt/akasha-showdown-engine/internal/middleware"
 )
 
@@ -41,10 +42,12 @@ type GameServer struct {
 	// Matchmaking queue
 	queueMutex       sync.Mutex
 	matchmakingQueue []int // subscriber IDs
+
+	dbClient *db.Client
 }
 
 // GameServer Constructor
-func NewGameServer(mux *http.ServeMux) *GameServer {
+func NewGameServer(mux *http.ServeMux, dbClient *db.Client) *GameServer {
 	globalLobby := &Lobby{
 		ID:          "global",
 		Name:        "Global Lobby",
@@ -59,6 +62,7 @@ func NewGameServer(mux *http.ServeMux) *GameServer {
 		lobbies:                 make(map[string]*Lobby),
 		globalLobby:             globalLobby,
 		matchmakingQueue:        make([]int, 0), // First players in should get priority. Might use a queue window later
+		dbClient:                dbClient,
 	}
 
 	// Add global lobby to lobbies map

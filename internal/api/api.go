@@ -5,13 +5,14 @@ import (
 
 	"github.com/vindennt/akasha-showdown-engine/internal/auth"
 	"github.com/vindennt/akasha-showdown-engine/internal/config"
+	"github.com/vindennt/akasha-showdown-engine/internal/db"
 	"github.com/vindennt/akasha-showdown-engine/internal/middleware"
 )
 
 
-func RegisterRoutes(mux *http.ServeMux, cfg *config.Config) {
+func RegisterRoutes(mux *http.ServeMux, cfg *config.Config, dbClient *db.Client) {
 	authClient := auth.NewClient(cfg)
-	itemHandler := NewItemHandler(cfg)
+	itemHandler := NewItemHandler(dbClient)
 	
 	// Health Check
 	mux.HandleFunc("/health/ping", func(w http.ResponseWriter, r *http.Request) {
