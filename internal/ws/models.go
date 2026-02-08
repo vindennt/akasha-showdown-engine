@@ -12,8 +12,36 @@ var (
 
 type Peer struct {
 	Type  string `json:"type"`
-    ID    int    `json:"id"`
-    State string `json:"state"`
+	ID    int    `json:"id"`
+	State string `json:"state"`
+}
+
+type ChatMessage struct {
+	Type      string `json:"type"` // "CHAT_MESSAGE"
+	SenderID  int    `json:"sender_id"`
+	Message   string `json:"message"`
+	LobbyID   string `json:"lobby_id"`
+	Timestamp int64  `json:"timestamp"`
+}
+
+type LobbyInfo struct {
+	Type     string `json:"type"` // "LOBBY_INFO"
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	NumUsers int    `json:"num_users"`
+}
+
+type LobbyEvent struct {
+	Type    string `json:"type"` // "LOBBY_JOIN", "LOBBY_LEAVE"
+	UserID  int    `json:"user_id"`
+	LobbyID string `json:"lobby_id"`
+}
+
+// Matchmaking 
+type MatchResult struct {
+	Type     string `json:"type"` // "MATCH_RESULT"
+	WinnerID int    `json:"winner_id"`
+	LoserID  int    `json:"loser_id"`
 }
 
 // subscriber represents a subscriber
