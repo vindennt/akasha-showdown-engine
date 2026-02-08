@@ -1,7 +1,9 @@
 #!/bin/bash
 
 # Test script for authentication endpoints
-BASE_URL="http://localhost:8282"
+BASE_URL=${BASE_URL:-"http://localhost:8282"}
+TEST_EMAIL=${TEST_EMAIL:-"test@example.com"}
+TEST_PASSWORD=${TEST_PASSWORD:-"password"}
 
 echo "Testing Authentication Endpoints"
 echo "================================="
@@ -17,8 +19,8 @@ echo "2. Testing /auth/signup..."
 SIGNUP_RESPONSE=$(curl -s -X POST "$BASE_URL/auth/signup" \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "test@example.com",
-    "password": "password"
+    "email": "'"$TEST_EMAIL"'",
+    "password": "'"$TEST_PASSWORD"'"
   }')
 echo "$SIGNUP_RESPONSE" | jq '.' 2>/dev/null || echo "$SIGNUP_RESPONSE"
 echo ""
@@ -28,8 +30,8 @@ echo "3. Testing /auth/signin..."
 SIGNIN_RESPONSE=$(curl -s -X POST "$BASE_URL/auth/signin" \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "test@example.com",
-    "password": "password"
+    "email": "'"$TEST_EMAIL"'",
+    "password": "'"$TEST_PASSWORD"'"
   }')
 echo "$SIGNIN_RESPONSE" | jq '.' 2>/dev/null || echo "$SIGNIN_RESPONSE"
 
