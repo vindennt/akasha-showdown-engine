@@ -6,7 +6,10 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"strconv"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // publishes a message to all subscribers in a specific lobby
@@ -180,11 +183,14 @@ func (gs *GameServer) startMatch(player1, player2 int) {
 	msg, _ := json.Marshal(result)
 	gs.publish(msg)
 
+	// Store match result in Supabase items table
+	// TODO: data engineering for dedicated match table and user results
+	// How to make user results account based but be your own?
+	go gs.storeMatchResult(winner)
+
 	time.Sleep(6 * time.Second) // TODO: defult time for result showing
 
 	gs.logf("Returning players %d and %d to global lobby", player1, player2)
-
-	// TODO: store match result
 }
 
 // generateLobbyID generates a unique lobby ID
@@ -203,4 +209,34 @@ func randomString(length int) string {
 		result[i] = charset[rand.Intn(len(charset))]
 	}
 	return string(result)
+}
+
+// storeMatchResult stores the match result in the Supabase items table
+func (gs *GameServer) storeMatchResult(winnerID int) {
+	timestamp := time.Now().Unix()
+	title := "match_result" + strconv.FormatInt(timestamp, 10)
+	description := strconv.Itoa(winnerID)
+
+	// Use a system user ID for owner_id (test user for now)
+	// TODO: remove this hardcoded ID and ensure that system stuff uses the admin acc
+	systemUserID := "fb490750-7386-4150-a047-2317d2f51e5b"
+
+	itemData := map[string]interface{}{
+		"id":          uuid.New().String(), // Generate UUID for id column
+		"title":       title,
+		"description": description,
+		"owner_id":    systemUserID, // Required for RLS policies
+	}
+
+	// Get system client (uses secret key, bypasses RLS)
+	client := gs.dbClient.GetSystemClient()
+
+	// REsponse body and row count ignored
+	_, _, err := client.From("items").Insert(itemData, false, "", "", "").Execute()
+	if err != nil {
+		gs.logf("[ERROR] Failed to store match result: %v", err)
+		return
+	}
+
+	gs.logf("[SUCCESS] Match result stored: title=%s, winner=%d, owner=%s", title, winnerID, systemUserID)
 }
