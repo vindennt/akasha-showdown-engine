@@ -15,6 +15,7 @@ type Config struct {
 	SupabaseURL        string
 	SupabaseProjectRef string
 	SupabaseAnonKey    string
+	SupabaseSecretKey  string // Secret key for server-side operations (replaces legacy service_role)
 	// AllowedOrigin string
 }
 
@@ -31,12 +32,11 @@ type Config struct {
 // }
 
 func LoadConfig() (*Config, error) {
-	key := os.Getenv("SUPABASE_ANON_KEY")
-	if key == "" {
-		key = os.Getenv("SUPABASE_KEY")
-	}
+	port := os.Getenv("PORT")
+	anon_key := os.Getenv("SUPABASE_KEY")
 
 	supabaseURL := os.Getenv("SUPABASE_URL")
+	SupabaseSecretKey := os.Getenv("SUPABASE_SECRET_KEY")``
 
 	// Extract project ref key (strip protocol first)
 	projectRef := supabaseURL
@@ -48,10 +48,11 @@ func LoadConfig() (*Config, error) {
 	}
 
 	cfg := &Config{
-		Port:               os.Getenv("PORT"),
+		Port:               port,
 		SupabaseURL:        supabaseURL,
 		SupabaseProjectRef: projectRef,
-		SupabaseAnonKey:    key,
+		SupabaseAnonKey:    anon_key,
+		SupabaseSecretKey:  SupabaseSecretKey,
 		// Logs: LogConfig{
 		// 	Style: os.Getenv("LOG_STYLE"),
 		// 	Level: os.Getenv("LOG_LEVEL"),

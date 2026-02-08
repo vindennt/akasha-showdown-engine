@@ -5,14 +5,12 @@ import (
 	"github.com/vindennt/akasha-showdown-engine/internal/config"
 )
 
-// Client manages Supabase database connections
 type Client struct {
 	baseURL   string
 	anonKey   string
 	secretKey string
 }
 
-// NewClient creates a new database client from config
 func NewClient(cfg *config.Config) *Client {
 	return &Client{
 		baseURL:   cfg.SupabaseURL,
@@ -32,6 +30,7 @@ func (c *Client) GetUserClient(token string) *postgrest.Client {
 	
 	client := postgrest.NewClient(restURL, "", headers)
 	
+	// Fallback
 	if token != "" {
 		client.SetAuthToken(token)
 	} else {
@@ -42,18 +41,13 @@ func (c *Client) GetUserClient(token string) *postgrest.Client {
 }
 
 // GetSystemClient returns a PostgREST client for system-level operations
-// Uses the secret key which bypasses Row Level Security policies
+// Uses secret key for non client side ops
 func (c *Client) GetSystemClient() *postgrest.Client {
 	restURL := c.baseURL + "/rest/v1"
 	
-	// Use secret key if available, fallback to anon key
 	authKey := c.secretKey
-	if authKey == "" {
-		authKey = c.anonKey
-	}
-	
 	headers := map[string]string{
-		"apikey": authKey, // Secret key bypasses RLS
+		"apikey": authKey, 
 	}
 	
 	client := postgrest.NewClient(restURL, "", headers)

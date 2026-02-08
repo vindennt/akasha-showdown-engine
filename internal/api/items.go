@@ -14,44 +14,31 @@ import (
 
 	"github.com/supabase-community/postgrest-go"
 	"github.com/vindennt/akasha-showdown-engine/internal/auth"
-	"github.com/vindennt/akasha-showdown-engine/internal/config"
+	"github.com/vindennt/akasha-showdown-engine/internal/db"
 	"github.com/vindennt/akasha-showdown-engine/internal/models"
 )
 
 type ItemHandler struct {
-	SupabaseURL     string
-	SupabaseAnonKey string
+	dbClient *db.Client
 }
 
-func NewItemHandler(cfg *config.Config) *ItemHandler {
+func NewItemHandler(dbClient *db.Client) *ItemHandler {
 	return &ItemHandler{
-		SupabaseURL:     cfg.SupabaseURL,
-		SupabaseAnonKey: cfg.SupabaseAnonKey,
+		dbClient: dbClient,
 	}
 }
 
 // Helper to get token from context and apply to client
 func (h *ItemHandler) getClient(r *http.Request) *postgrest.Client {
     // Create new client per request to avoid shared state
-    // Always include apikey header for Supabase
-    headers := map[string]string{
-        "apikey": h.SupabaseAnonKey,
-    }
-    
-    client := postgrest.NewClient(h.SupabaseURL, "", headers)
-    
+
     authHeader := r.Header.Get("Authorization")
     token := ""
     if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
         token = authHeader[7:]
     }
     
-    if token != "" {
-        client.SetAuthToken(token)
-    } else {
-        client.SetAuthToken(h.SupabaseAnonKey)
-    }
-    return client
+	return h.dbClient.GetUserClient(token)
 }
 
 func (h *ItemHandler) CreateItem(w http.ResponseWriter, r *http.Request) {
