@@ -28,4 +28,8 @@ func RegisterRoutes(mux *http.ServeMux, cfg *config.Config, dbClient *db.Client)
 	mux.Handle("/item/get-items", middleware.CORSHandler(authClient.AuthMiddleware(http.HandlerFunc(itemHandler.ListItems))))
 	mux.Handle("/item/update-item/", middleware.CORSHandler(authClient.AuthMiddleware(http.HandlerFunc(itemHandler.UpdateItem))))
 	mux.Handle("/item/delete/", middleware.CORSHandler(authClient.AuthMiddleware(http.HandlerFunc(itemHandler.DeleteItem))))
+
+	// Enka API
+	enkaClient := NewEnkaClient()
+	mux.Handle("GET /api/enka/player/{uid}", middleware.CORSHandler(http.HandlerFunc(enkaClient.GetPlayerData)))
 }
